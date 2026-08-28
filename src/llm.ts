@@ -15,7 +15,7 @@ export const SYSTEM_PROMPT =
 
 // ask
 export function ask(history: MessageParam[], tools: Tool[]) {
-  return client.messages.create({
+  return client.messages.stream({
     model: MODEL,
     max_tokens: 2048,
     system: SYSTEM_PROMPT,

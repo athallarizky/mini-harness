@@ -18,18 +18,21 @@ async function main() {
   }]
 
   for (let iteration = 0; iteration < MAX_ITERATION; iteration += 1){
-    const response = await ask(history, toolDefinitions)
+    const stream = ask(history, toolDefinitions)
+    stream.on('text', (delta) => process.stdout.write(delta))
+
+    const response = await stream.finalMessage()
 
     history.push({
       role: "assistant",
       content: response.content
     })
 
-    for (const block of response.content) {
-      if (block.type === 'text') {
-        process.stdout.write(block.text + "\n")
-      }
-    }
+    // for (const block of response.content) {
+    //   if (block.type === 'text') {
+    //     process.stdout.write(block.text + "\n")
+    //   }
+    // }
 
     if (response.stop_reason !== 'tool_use') {
       console.log(`\n[selesai dalam ${iteration + 1} putaran]`)
