@@ -3,17 +3,17 @@ import type { MessageParam, Tool } from "@anthropic-ai/sdk/resources";
 
 const model = process.env.MODEL
 if (!model) {
-  throw new Error("MODEL uncofigured")
+  throw new Error("MODEL is not configured")
 }
 
-// system prompt
+// The agent's SOP — read aloud at the start of every request.
 export const SYSTEM_PROMPT =
-  "Kamu adalah agent terminal untuk tugas file lokal dan web. " +
-  "Pakai tool setiap kali butuh data — jangan pernah menebak isi file atau isi halaman web. " +
-  "Boleh memanggil beberapa tool sekaligus dalam satu giliran jika itu membantu. " +
-  "Jawab ringkas dalam Bahasa Indonesia.";
+  "You are a terminal agent for local file and web tasks. " +
+  "Use a tool whenever you need data — never guess file contents or web pages. " +
+  "You may call several tools in one turn when it helps. " +
+  "Answer concisely.";
 
-// ask
+// Single entry point for every model call: system + tools + full history.
 export function ask(history: MessageParam[], tools: Tool[]) {
   return client.messages.stream({
     model: MODEL,

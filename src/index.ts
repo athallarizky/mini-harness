@@ -11,21 +11,24 @@ async function main() {
     input: process.stdin,
     output: process.stdout
   })
-
+  // Ctrl+D (EOF) closes the interface — make sure the process exits too
   rl.on("close", () => process.exit(0))
 
+  // Session memory: ONE array for the WHOLE session. Every user turn and
+  // every model reply piles up here. Wipe it and the agent forgets everything.
   const history: MessageParam[] = []
 
-  console.log("mini-harness REPL — /exit keluar, /reset kosongkan memori\n")
+  console.log("mini-harness REPL — /exit to quit, /reset to clear memory\n")
 
+  // ===== OUTER LOOP: the REPL (one round = one user turn) =====
   while (true) {
     const task = await rl.question("you> ")
 
     if (!task.trim()) continue
-    if (task === '/exit') break
-    if (task === '/reset') {
+    if (task === "/exit") break
+    if (task === "/reset") {
       history.length = 0
-      console.log("[Clearing History]")
+      console.log("[history cleared]\n")
       continue
     }
 
@@ -34,23 +37,27 @@ async function main() {
       content: task
     })
 
-    for (let iteration = 0; iteration < MAX_ITERATION; iteration += 1){
+    // ===== INNER LOOP: the agent loop — streaming + tools =====
+    let finished = false
+    for (let iteration = 0; iteration < MAX_ITERATION; iteration += 1) {
       const stream = ask(history, toolDefinitions)
       stream.on("text", (delta) => process.stdout.write(delta))
 
       const response = await stream.finalMessage()
 
+      // Push the model's reply as-is — tool_use blocks must stay in history
       history.push({
         role: "assistant",
         content: response.content
       })
 
       if (response.stop_reason !== "tool_use") {
-        console.log(`\n[Finished in ${iteration + 1} iteration(s)]`)
+        console.log(`\n[finished in ${iteration + 1} round(s)]\n`)
+        finished = true
         break
       }
 
-      // tools execution
+      // Collect every tool request from this turn
       const calls: { id: string; name: string; input: Record<string, unknown> }[] = []
       for (const block of response.content) {
         if (block.type === "tool_use") {
@@ -62,7 +69,7 @@ async function main() {
         }
       }
 
-      // tools pararel execution
+      // Execute all tool calls concurrently
       const output = await Promise.all(
         calls.map(async (call) => {
           console.log(`\n 🔧 ${call.name}(${JSON.stringify(call.input)})`)
@@ -70,6 +77,7 @@ async function main() {
         })
       )
 
+      // Pair each call with its result by index — ONE user message
       const result: ToolResultBlockParam[] = calls.map((call, i) => ({
         type: "tool_result",
         tool_use_id: call.id,
@@ -81,9 +89,13 @@ async function main() {
         content: result
       })
     }
+
+    if (!finished) {
+      console.error("Max iterations reached — stopping to protect your wallet.")
+    }
   }
 
-  console.log("Good Bye! 👋")
+  console.log("Goodbye! 👋")
   rl.close()
 }
 

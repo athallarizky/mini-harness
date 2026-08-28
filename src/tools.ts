@@ -2,19 +2,22 @@ import { readdirSync, readFileSync } from 'node:fs'
 import type Anthropic from '@anthropic-ai/sdk'
 
 
+// ===== TOOL CATALOG (what the model sees) =====
+// Descriptions are part of the prompt: write WHEN to use a tool,
+// not just what it is.
 export const toolDefinitions: Anthropic.Tool[] = [
   // tool: read_file
   {
     name: "read_file",
     description:
-    "Baca isi sebuah file teks. Panggil setiap kali kamu membutuhkan isi file " +
-    "untuk menjawab atau mengerjakan tugas — jangan pernah menebak isinya.",
+      "Read the contents of a text file. Call whenever you need a file's " +
+      "contents to answer or complete a task — never guess them.",
     input_schema: {
       type: 'object',
       properties: {
         path: {
           type: 'string',
-          description:  "Path file relatif terhadap folder jalanannya, mis. catatan.txt"
+          description: "File path relative to the working directory, e.g. notes.txt"
         }
       },
       required: ["path"]
@@ -24,44 +27,45 @@ export const toolDefinitions: Anthropic.Tool[] = [
   {
     name: "write_file",
     description:
-      "Tulis atau buat file (menimpa jika sudah ada). Panggil saat user meminta " +
-      "membuat/mengubah file. Sertakan SELURUH isi file di parameter content.",
+      "Write or create a file (overwrites if it already exists). Call when " +
+      "the user asks to create or change a file. Include the ENTIRE file " +
+      "content in the content parameter.",
     input_schema: {
       type: "object",
       properties: {
-        path: { type: "string", description: "Path file tujuan, mis. halo.txt" },
-        content: { type: "string", description: "Seluruh isi file yang akan ditulis" }
+        path: { type: "string", description: "Target file path, e.g. hello.txt" },
+        content: { type: "string", description: "The entire file content to write" }
       },
       required: ["path", "content"]
     }
   },
-  // tools: list_files
+  // tool: list_files
   {
     name: "list_files",
     description:
-      "Lihat daftar nama file dan folder dalam satu folder. Panggil dulu saat kamu " +
-      "tidak yakin nama file mana yang dimaksud user.",
+      "List file and folder names inside a folder. Call first when you are " +
+      "not sure which file the user means.",
     input_schema: {
       type: "object",
       properties: {
         dir: {
           type: "string",
-          description: "Path folder relatif, mis. . atau src. Kosongkan = folder sekarang",
+          description: "Relative folder path, e.g. . or src. Omit for the current folder",
         }
       },
       required: []
     }
   },
-  // tools: web_fetch
+  // tool: web_fetch
   {
     name: 'web_fetch',
     description:
-      "Ambil isi halaman web (HTML) sebagai teks. Panggil saat kamu butuh informasi " +
-      "dari sebuah URL. Output dipotong otomatis di 5000 karakter pertama.",
+      "Fetch a web page (HTML) as text. Call when you need information " +
+      "from a URL. Output is truncated to the first 5000 characters.",
     input_schema: {
       type: "object",
       properties: {
-        url: { type: "string", description: "URL lengkap, mis. https://example.com" }
+        url: { type: "string", description: "Full URL, e.g. https://example.com" }
       },
       required: ["url"]
     }
@@ -69,6 +73,10 @@ export const toolDefinitions: Anthropic.Tool[] = [
 ]
 
 
+// ===== EXECUTOR (our hands) — async because tools hit the network =====
+// One try/catch for every tool: any failure (missing file, HTTP error,
+// network down) is returned as a STRING — never thrown — so the model
+// can read it and self-correct. The agent must not crash.
 export async function runTool(
   name: string,
   input: Record<string, unknown>
@@ -78,30 +86,32 @@ export async function runTool(
     // read file
     if (name === "read_file") {
       if (typeof input.path !== "string") {
-        return "ERROR: read_file butuh parameter 'path' (string)."
+        return "ERROR: read_file requires a 'path' parameter (string)."
       }
       return readFileSync(input.path, "utf8")
     }
 
     // write file
     if (name === "write_file") {
+      // Validate BEFORE writing: String(undefined) === "undefined" —
+      // without this gate, garbage files appear without a single error.
       if (typeof input.path !== "string" || typeof input.content !== "string") {
-        return `ERROR: write_file butuh parameter 'path' dan 'content' (string).`
+        return "ERROR: write_file requires 'path' and 'content' parameters (string)."
       }
       await Bun.write(input.path, input.content)
-      return `OK: ${input.content.length} karakter tertulis ke ${input.path}.`
+      return `OK: wrote ${input.content.length} characters to ${input.path}`
     }
 
-    // list file
+    // list files
     if (name === "list_files") {
       const dir = typeof input.dir === "string" ? input.dir : "."
-      return readdirSync(dir).join("\n") || "(folder kosong)"
+      return readdirSync(dir).join("\n") || "(empty folder)"
     }
 
     // web fetch
     if (name === "web_fetch") {
       if (typeof input.url !== "string") {
-        return `ERROR: web_fetch butuh parameter 'url' (string).`
+        return "ERROR: web_fetch requires a 'url' parameter (string)."
       }
 
       const res = await fetch(input.url)
@@ -110,14 +120,14 @@ export async function runTool(
       }
 
       const body = await res.text()
-      const MAX_CHARS = 5000;
+      const MAX_CHARS = 5000 // protect the context window and your wallet
       return body.length > MAX_CHARS
-        ? body.slice(0, MAX_CHARS) + `\n...[dipotong, total ${body.length}] karakter]`
+        ? body.slice(0, MAX_CHARS) + `\n...[truncated, total ${body.length} characters]`
         : body
     }
 
-    return `Error: tools not found: ${name}`
+    return `ERROR: unknown tool: ${name}`
   } catch (error) {
-    return `Error: ${error instanceof Error ? error.message : String(error)}`
+    return `ERROR: ${error instanceof Error ? error.message : String(error)}`
   }
 }
