@@ -36,20 +36,32 @@ async function main() {
       return;
     }
 
-    const result: ToolResultBlockParam[] = []
+    // tools execution
+    const calls: { id: string; name: string; input: Record<string, unknown> }[] = []
     for (const block of response.content) {
-      if (block.type === 'tool_use') {
-
-        console.log(`\n🔧 ${block.name}(${JSON.stringify(block.input)}) `)
-
-        const output = runTool(block.name, block.input as Record<string, unknown>)
-        result.push({
-          type: 'tool_result',
-          tool_use_id: block.id,
-          content: output
+      if (block.type === "tool_use") {
+        calls.push({
+          id: block.id,
+          name: block.name,
+          input: block.input as Record<string, unknown>
         })
       }
     }
+
+    // tools pararel execution
+    const output = await Promise.all(
+      calls.map(async (call) => {
+        console.log(`\n🔧 ${call.name}(${JSON.stringify(call.input)})`);
+        return runTool(call.name, call.input)
+      })
+    )
+
+
+    const result: ToolResultBlockParam[] = calls.map((call, i) => ({
+      type: "tool_result",
+      tool_use_id: call.id,
+      content: output[i]
+    }))
 
     history.push({
       role: 'user',

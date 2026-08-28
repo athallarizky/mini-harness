@@ -8,8 +8,9 @@ if (!model) {
 
 // system prompt
 export const SYSTEM_PROMPT =
-  "Kamu adalah agent terminal untuk tugas file lokal. " +
-  "Gunakan tool read_file setiap kali isi file dibutuhkan — jangan menebak isinya. " +
+  "Kamu adalah agent terminal untuk tugas file lokal dan web. " +
+  "Pakai tool setiap kali butuh data — jangan pernah menebak isi file atau isi halaman web. " +
+  "Boleh memanggil beberapa tool sekaligus dalam satu giliran jika itu membantu. " +
   "Jawab ringkas dalam Bahasa Indonesia.";
 
 // ask
